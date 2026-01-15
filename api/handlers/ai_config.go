@@ -134,3 +134,27 @@ func (h *AIConfigHandler) TestConnection(c *gin.Context) {
 
 	response.Success(c, gin.H{"message": "连接测试成功"})
 }
+
+// FetchModelsRequest 获取模型列表的请求参数
+type FetchModelsRequest struct {
+	BaseURL string `json:"base_url" binding:"required,url"`
+	APIKey  string `json:"api_key" binding:"required"`
+}
+
+// FetchModels 从 OpenAI 兼容接口获取模型列表
+func (h *AIConfigHandler) FetchModels(c *gin.Context) {
+	var req FetchModelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	models, err := h.aiService.FetchModels(req.BaseURL, req.APIKey)
+	if err != nil {
+		h.log.Errorw("Failed to fetch models", "error", err, "base_url", req.BaseURL)
+		response.BadRequest(c, "获取模型列表失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
+}

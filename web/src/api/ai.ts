@@ -32,5 +32,13 @@ export const aiAPI = {
 
   testConnection(data: TestConnectionRequest) {
     return request.post('/ai-configs/test', data)
+  },
+
+  // 获取自定义服务商的模型列表
+  fetchModels(baseUrl: string, apiKey: string) {
+    return request.post<{ models: string[] }>('/ai-configs/models', {
+      base_url: baseUrl,
+      api_key: apiKey
+    })
   }
 }

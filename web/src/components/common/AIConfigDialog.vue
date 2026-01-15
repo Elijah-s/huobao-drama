@@ -103,24 +103,34 @@
         </el-form-item>
 
         <el-form-item :label="$t('aiConfig.form.model')" prop="model">
-          <el-select 
-            v-model="form.model" 
-            :placeholder="$t('aiConfig.form.modelPlaceholder')"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            collapse-tags
-            collapse-tags-tooltip
-            style="width: 100%"
-          >
-            <el-option
-              v-for="model in availableModels"
-              :key="model"
-              :label="model"
-              :value="model"
-            />
-          </el-select>
+          <div style="display: flex; gap: 8px; width: 100%;">
+            <el-select 
+              v-model="form.model" 
+              :placeholder="$t('aiConfig.form.modelPlaceholder')"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              collapse-tags
+              collapse-tags-tooltip
+              style="flex: 1"
+            >
+              <el-option
+                v-for="model in availableModels"
+                :key="model"
+                :label="model"
+                :value="model"
+              />
+            </el-select>
+            <el-button 
+              v-if="form.provider === 'custom'"
+              @click="fetchModels" 
+              :loading="fetchingModels"
+              type="default"
+            >
+              获取模型
+            </el-button>
+          </div>
           <div class="form-tip">{{ $t('aiConfig.form.modelTip') }}</div>
         </el-form-item>
 
@@ -189,6 +199,8 @@ const editingId = ref<number>()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const testing = ref(false)
+const fetchingModels = ref(false)
+const customModels = ref<string[]>([])
 
 const form = reactive<CreateAIConfigRequest & { is_active?: boolean, provider?: string }>({
   service_type: 'text',
@@ -229,7 +241,8 @@ const providerConfigs: Record<AIServiceType, ProviderConfig[]> = {
       id: 'gemini', 
       name: 'Google Gemini', 
       models: ['gemini-2.5-pro', 'gemini-3-pro-preview']
-    }
+    },
+    { id: 'custom', name: 'Custom (OpenAI Compatible)', models: [] }
   ],
   image: [
     { 
@@ -247,7 +260,8 @@ const providerConfigs: Record<AIServiceType, ProviderConfig[]> = {
       name: 'Google Gemini', 
       models: ['gemini-3-pro-image-preview']
     },
-    { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] }
+    { id: 'openai', name: 'OpenAI', models: ['dall-e-3', 'dall-e-2'] },
+    { id: 'custom', name: 'Custom (OpenAI Compatible)', models: [] }
   ],
   video: [
     { 
@@ -274,7 +288,8 @@ const providerConfigs: Record<AIServiceType, ProviderConfig[]> = {
         'sora-pro'
       ]
     },
-    { id: 'openai', name: 'OpenAI', models: ['sora-2', 'sora-2-pro'] }
+    { id: 'openai', name: 'OpenAI', models: ['sora-2', 'sora-2-pro'] },
+    { id: 'custom', name: 'Custom (OpenAI Compatible)', models: [] }
   ]
 }
 
@@ -284,6 +299,10 @@ const availableProviders = computed(() => {
 
 const availableModels = computed(() => {
   if (!form.provider) return []
+  // 如果是 custom provider，使用获取到的模型列表
+  if (form.provider === 'custom') {
+    return customModels.value
+  }
   const provider = availableProviders.value.find(p => p.id === form.provider)
   return provider?.models || []
 })
@@ -516,15 +535,41 @@ const handleTabChange = (tabName: string | number) => {
 
 const handleProviderChange = () => {
   form.model = []
+  customModels.value = []
   
   if (form.provider === 'gemini' || form.provider === 'google') {
     form.base_url = 'https://api.chatfire.site'
+  } else if (form.provider === 'custom') {
+    form.base_url = ''
   } else {
     form.base_url = 'https://api.chatfire.site/v1'
   }
   
   if (!isEdit.value) {
     form.name = generateConfigName(form.provider, form.service_type)
+  }
+}
+
+// 获取自定义服务商的模型列表
+const fetchModels = async () => {
+  if (!form.base_url || !form.api_key) {
+    ElMessage.warning('请先填写 Base URL 和 API Key')
+    return
+  }
+
+  fetchingModels.value = true
+  try {
+    const result = await aiAPI.fetchModels(form.base_url, form.api_key)
+    customModels.value = result.models || []
+    if (customModels.value.length > 0) {
+      ElMessage.success(`成功获取 ${customModels.value.length} 个模型`)
+    } else {
+      ElMessage.warning('未获取到模型列表')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '获取模型列表失败')
+  } finally {
+    fetchingModels.value = false
   }
 }
 

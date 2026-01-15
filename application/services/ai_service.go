@@ -1,8 +1,12 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"time"
 
 	"github.com/drama-generator/backend/domain/models"
 	"github.com/drama-generator/backend/pkg/ai"
@@ -395,4 +399,66 @@ func (s *AIService) GenerateText(prompt string, systemPrompt string, options ...
 	}
 
 	return client.GenerateText(prompt, systemPrompt, options...)
+}
+
+// ModelInfo 模型信息
+type ModelInfo struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	OwnedBy string `json:"owned_by"`
+}
+
+// ModelsResponse OpenAI /v1/models 响应结构
+type ModelsResponse struct {
+	Object string      `json:"object"`
+	Data   []ModelInfo `json:"data"`
+}
+
+// FetchModels 从 OpenAI 兼容接口获取模型列表
+func (s *AIService) FetchModels(baseURL, apiKey string) ([]string, error) {
+	s.log.Infow("Fetching models from provider", "base_url", baseURL)
+
+	// 构建请求
+	url := baseURL + "/models"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	// 发送请求
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		s.log.Errorw("Failed to fetch models", "status", resp.StatusCode, "body", string(body))
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// 解析响应
+	var modelsResp ModelsResponse
+	if err := json.Unmarshal(body, &modelsResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// 提取模型 ID 列表
+	models := make([]string, 0, len(modelsResp.Data))
+	for _, model := range modelsResp.Data {
+		models = append(models, model.ID)
+	}
+
+	s.log.Infow("Successfully fetched models", "count", len(models))
+	return models, nil
 }
